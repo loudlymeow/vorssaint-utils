@@ -393,7 +393,7 @@ enum FeatureCatalogTests {
             "switcher", "dockPreview", "dockClick", "windowMaximizer", "windowLayout", "autoQuit", "spacesOrder",
             "scrollInverter", "scrollHorizontal", "scrollZoom", "focusFollowsMouse", "smoothScroll", "linearScroll", "scrollSpeed", "mouseAcceleration", "mouseNavigation", "mouseButtonShortcuts", "middleClick",
             "mouseClickDebounce", "keyboardDebounce", "textSnippets", "superKey", "quitWindowProtection",
-            "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "shelf", "urlCleaner",
+            "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "finderRightClick", "shelf", "urlCleaner",
             "diskImageInstaller",
             "mixer", "soundOutputSwitcher", "audioPriority", "micMute", "musicBlock",
             "keepAwake", "brightness", "extraBrightness", "bluetoothSleep",
@@ -593,7 +593,8 @@ enum FeatureCatalogTests {
                 && (AppFeature.availabilityDefaults[AppFeature.focusFollowsMouse.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.fanControl.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.notchMascot.availabilityKey] as? Bool) == false
-                && (AppFeature.availabilityDefaults[AppFeature.quitApps.availabilityKey] as? Bool) == false,
+                && (AppFeature.availabilityDefaults[AppFeature.quitApps.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.finderRightClick.availabilityKey] as? Bool) == false,
                "features added after the list was frozen wait on the Features page instead of installing themselves")
         let linearScrollSuiteName = "com.vorssaint.tests.linear-scroll-availability.\(UUID().uuidString)"
         if let linearDefaults = UserDefaults(suiteName: linearScrollSuiteName) {
@@ -2185,6 +2186,7 @@ enum FeatureCatalogTests {
                 && AppFeature.mouseClickDebounce.energyProfile == .mouse
                 && AppFeature.switcher.energyProfile == .inputs
                 && AppFeature.finderRename.energyProfile == .keyboard
+                && AppFeature.finderRightClick.energyProfile == .keyboard
                 && AppFeature.musicBlock.energyProfile == .keyboard
                 && AppFeature.colorPicker.energyProfile == .idle
                 && AppFeature.keepAwake.energyProfile == .idle
@@ -2348,6 +2350,9 @@ enum FeatureCatalogTests {
                 && pageVisible(.cutPaste, available: [.finderCutPaste])
                 && !pageVisible(.cutPaste, available: []),
                "either Finder shortcut keeps their shared page visible")
+        suite.expect(pageVisible(.finderRightClick, available: [.finderRightClick])
+                && !pageVisible(.finderRightClick, available: []),
+               "Finder right-click settings follow their feature")
         suite.expect(!pageVisible(.cleaner,
                             available: allFeatures.subtracting([.cleaner])),
                "cleaner settings, including WhatsApp downloads, follow the cleaner module")

@@ -141,6 +141,7 @@ struct MetricsTests {
                 FeatureCatalogTests.run(suite)
                 MenuPanelSectionGateContract.run(suite)
                 StartupGatingTests.run(suite)
+                FinderRightClickFeatureTests.run(suite)
             }),
             ("shortcut-clearing", { ShortcutClearingTests.run(suite) }),
             ("utilities", {

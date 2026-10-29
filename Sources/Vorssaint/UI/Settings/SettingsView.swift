@@ -599,6 +599,7 @@ struct SettingsView: View {
         case .keyDebounce: KeyboardDebounceSettings()
         case .superKey: SuperKeySettings()
         case .cutPaste: CutPasteSettings()
+        case .finderRightClick: FinderRightClickSettings()
         case .autoQuit: AutoQuitSettings()
         case .quitProtection: QuitProtectionSettings()
         case .uninstaller: UninstallerView()
