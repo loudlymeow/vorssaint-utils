@@ -132,6 +132,7 @@ struct MetricsTests {
             ("features", {
                 FeatureCatalogTests.run(suite)
                 MenuPanelSectionGateContract.run(suite)
+                FinderRightClickFeatureTests.run(suite)
             }),
             ("utilities", {
                 UtilitiesFeatureTests.run(suite)

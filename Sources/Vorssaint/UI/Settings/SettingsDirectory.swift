@@ -327,6 +327,16 @@ enum SettingsDirectory {
                                         (.finderRename,
                                          [FeatureStrings.finderRename(language).enableLabel]),
                                        ]),
+                SettingsDirectoryItem(page: .finderRightClick,
+                                       title: FeatureStrings.finderRightClick(language).pageTitle,
+                                       icon: "contextualmenu.and.cursorarrow",
+                                       featureKeywords: [
+                                        (.finderRightClick, [
+                                            FeatureStrings.finderRightClick(language).enableLabel,
+                                            FeatureStrings.finderRightClick(language).newFileLabel,
+                                            FeatureStrings.finderRightClick(language).copyOptionsLabel,
+                                        ]),
+                                       ]),
                 SettingsDirectoryItem(page: .shelf, title: s.shelfName, icon: "tray.full",
                                       keywords: [s.shelfEnable, s.shelfDropZoneToggle, s.shelfEdgeToggle,
                                                  s.shelfClearOnClose, s.shelfShortcutFinderSelection,

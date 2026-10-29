@@ -62,6 +62,19 @@ FAN_HELPER_ID="$APP_BUNDLE_ID.fan-control"
 # Sources/NowPlayingAdapter. Staged under Contents/Frameworks, signed on its own.
 NOW_PLAYING_ADAPTER_ID="$APP_BUNDLE_ID.now-playing"
 NOW_PLAYING_ADAPTER="libVorssaintNowPlaying.dylib"
+# Finder Sync extension for right-click New File / Copy Options. Staged under
+# Contents/PlugIns and signed with its own entitlements before the outer app.
+FINDER_RIGHT_CLICK_ID="$APP_BUNDLE_ID.finder-right-click"
+FINDER_RIGHT_CLICK_EXECUTABLE="VorssaintFinderRightClick"
+FINDER_RIGHT_CLICK_APPEX="VorssaintFinderRightClick.appex"
+FINDER_RIGHT_CLICK_ENTITLEMENTS="Resources/FinderRightClickExtension/Entitlements.plist"
+if (( DEV )); then
+    FINDER_RIGHT_CLICK_HOST_SCHEME="vorssaint-dev-right-click"
+    FINDER_RIGHT_CLICK_CONFIG_PATH="Library/Application Support/Vorssaint Developer/finder-right-click.json"
+else
+    FINDER_RIGHT_CLICK_HOST_SCHEME="vorssaint-right-click"
+    FINDER_RIGHT_CLICK_CONFIG_PATH="Library/Application Support/Vorssaint/finder-right-click.json"
+fi
 TARGET="arm64-apple-macosx14.0"
 ENTITLEMENTS="Resources/Vorssaint.entitlements"
 LEGACY_IDENTITY="Vorssaint Utils Signing"
@@ -71,6 +84,26 @@ developer_id_identity() {
         | grep 'Developer ID Application' \
         | head -1 \
         | sed -E 's/.*"(.*)".*/\1/' || true
+}
+
+# Free Apple Development certificates carry a Team ID, which Finder Sync and
+# other PlugIns need before System Settings will list them. Prefer this over
+# the local self-signed identity when no Developer ID is available.
+apple_development_identity() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | grep 'Apple Development:' \
+        | head -1 \
+        | sed -E 's/.*"(.*)".*/\1/' || true
+}
+
+# Team-bearing identity used for packaging: Developer ID first, then Apple
+# Development. Empty means fall through to the legacy local identity or ad-hoc.
+preferred_codesign_identity() {
+    local id
+    id="$(developer_id_identity)"
+    [[ -n "$id" ]] && { print -r -- "$id"; return; }
+    id="$(apple_development_identity)"
+    [[ -n "$id" ]] && { print -r -- "$id"; return; }
 }
 
 # A find-identity listing also names certificates codesign then rejects (an
@@ -99,7 +132,7 @@ legacy_identity_installed() {
 # up front instead of falling through to ad-hoc — setup-signing.sh is free,
 # offline and idempotent. Gating on the install rather than the variant keeps
 # this off CI, where neither ci.yml nor release.yml passes --install.
-if (( DEV || INSTALL )) && [[ -z "$(developer_id_identity)" ]] \
+if (( DEV || INSTALL )) && [[ -z "$(preferred_codesign_identity)" ]] \
     && ! legacy_identity_installed; then
     echo "▸ No signing identity installed; creating the stable local one…"
     if ! ./Tools/setup-signing.sh; then
@@ -153,8 +186,9 @@ finalize_installed_bundle_after_child() {
     local bundle="$1"
     local helper="$bundle/Contents/Library/LaunchServices/$FAN_HELPER_ID"
     local adapter="$bundle/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
+    local appex="$bundle/Contents/PlugIns/$FINDER_RIGHT_CLICK_APPEX"
     local devid
-    devid="$(developer_id_identity)"
+    devid="$(preferred_codesign_identity)"
 
     echo "▸ Finalizing installed signature…"
     sleep 3
@@ -163,6 +197,9 @@ finalize_installed_bundle_after_child() {
             --options runtime --timestamp --identifier "$FAN_HELPER_ID" --sign "$devid" "$helper"
         [[ -f "$adapter" ]] && codesign_with_timestamp_retry --force --strip-disallowed-xattrs \
             --options runtime --timestamp --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$devid" "$adapter"
+        [[ -d "$appex" ]] && codesign_with_timestamp_retry --force --strip-disallowed-xattrs \
+            --options runtime --timestamp --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign "$devid" "$appex"
         codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --entitlements "$ENTITLEMENTS" --sign "$devid" "$bundle"
     elif legacy_identity_installed; then
@@ -170,16 +207,23 @@ finalize_installed_bundle_after_child() {
             --identifier "$FAN_HELPER_ID" --sign "$LEGACY_IDENTITY" "$helper"
         [[ -f "$adapter" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$NOW_PLAYING_ADAPTER_ID" --sign "$LEGACY_IDENTITY" "$adapter"
+        [[ -d "$appex" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
+            --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign "$LEGACY_IDENTITY" "$appex"
         /usr/bin/codesign --force --strip-disallowed-xattrs --sign "$LEGACY_IDENTITY" "$bundle"
     else
         [[ -f "$helper" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$FAN_HELPER_ID" --sign - "$helper"
         [[ -f "$adapter" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
             --identifier "$NOW_PLAYING_ADAPTER_ID" --sign - "$adapter"
+        [[ -d "$appex" ]] && /usr/bin/codesign --force --strip-disallowed-xattrs \
+            --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign - "$appex"
         /usr/bin/codesign --force --strip-disallowed-xattrs --sign - "$bundle"
     fi
     [[ -f "$helper" ]] && /usr/bin/codesign --verify --strict "$helper"
     [[ -f "$adapter" ]] && /usr/bin/codesign --verify --strict "$adapter"
+    [[ -d "$appex" ]] && /usr/bin/codesign --verify --strict "$appex"
     /usr/bin/codesign --verify --deep --strict "$bundle"
     echo "✓ Signature ready: $bundle"
 }
@@ -354,6 +398,11 @@ if (( TEST )); then
         Sources/Vorssaint/UI/MenuPanel/WallpaperThumbnailView.swift
         Sources/Vorssaint/Core/ScratchpadStrings.swift
         Sources/Vorssaint/Core/FinderRenameStrings.swift
+        Sources/Vorssaint/Core/FinderRightClickStrings.swift
+        Sources/Vorssaint/Services/Finder/FinderRightClickConfiguration.swift
+        Sources/Vorssaint/Services/Finder/FinderRightClickSupport.swift
+        Sources/Vorssaint/Services/Finder/FinderRightClickMenuLocalization.swift
+        Sources/Vorssaint/Services/Finder/FinderRightClickURLRouter.swift
         Sources/Vorssaint/Core/CommandBarStrings.swift
         Sources/Vorssaint/Core/FeedbackStrings.swift
         Sources/Vorssaint/Core/RadialMenuStrings.swift
@@ -644,6 +693,22 @@ swiftc -O -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" -emit-library \
     Sources/Vorssaint/Services/Notch/NotchPlaybackCommand.swift \
     -o "build/$NOW_PLAYING_ADAPTER"
 
+echo "▸ Compiling Finder right-click extension…"
+# App extensions have no top-level main; -parse-as-library plus NSExtensionMain
+# is the entry Foundation provides for PlugIns.
+swiftc "${APP_OPTIMIZATION_FLAGS[@]}" -target "$TARGET" -sdk "$SDK" "${SDK_COMPAT_FLAGS[@]}" \
+    "${BUILD_VARIANT_FLAGS[@]}" \
+    -module-name FinderRightClickExtension \
+    -parse-as-library \
+    -emit-executable \
+    -framework FinderSync \
+    Sources/FinderRightClickExtension/FinderRightClickExtension.swift \
+    Sources/Vorssaint/Services/Finder/FinderRightClickConfiguration.swift \
+    Sources/Vorssaint/Services/Finder/FinderRightClickSupport.swift \
+    Sources/Vorssaint/Services/Finder/FinderRightClickMenuLocalization.swift \
+    -Xlinker -e -Xlinker _NSExtensionMain \
+    -o "build/$FINDER_RIGHT_CLICK_EXECUTABLE"
+
 echo "▸ Generating app icon…"
 swift Tools/MakeIcon.swift build/AppIcon.iconset
 xattr -c -r build/AppIcon.iconset build/AppIcon.icns build/MenuBarIcon.png build/MenuBarIcon@2x.png build/BrandMark.png 2>/dev/null || true
@@ -680,11 +745,18 @@ echo "▸ Assembling and signing bundle…"
 STAGE_TMP="$(mktemp -d)"
 STAGE="$STAGE_TMP/$APP_NAME.app"
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" \
-    "$STAGE/Contents/Library/LaunchDaemons" "$STAGE/Contents/Library/LaunchServices"
+    "$STAGE/Contents/Library/LaunchDaemons" "$STAGE/Contents/Library/LaunchServices" \
+    "$STAGE/Contents/PlugIns"
 cp "build/$EXECUTABLE" "$STAGE/Contents/MacOS/$EXECUTABLE"
 cp "build/$FAN_HELPER_ID" "$STAGE/Contents/Library/LaunchServices/$FAN_HELPER_ID"
 mkdir -p "$STAGE/Contents/Frameworks"
 cp "build/$NOW_PLAYING_ADAPTER" "$STAGE/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
+FINDER_RIGHT_CLICK_STAGE="$STAGE/Contents/PlugIns/$FINDER_RIGHT_CLICK_APPEX"
+mkdir -p "$FINDER_RIGHT_CLICK_STAGE/Contents/MacOS"
+cp "build/$FINDER_RIGHT_CLICK_EXECUTABLE" \
+    "$FINDER_RIGHT_CLICK_STAGE/Contents/MacOS/$FINDER_RIGHT_CLICK_EXECUTABLE"
+cp Resources/FinderRightClickExtension/Info.plist "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
+printf 'XPC!????' > "$FINDER_RIGHT_CLICK_STAGE/Contents/PkgInfo"
 cp Resources/now-playing.pl "$STAGE/Contents/Resources/now-playing.pl"
 cp Resources/agent-prices.json "$STAGE/Contents/Resources/agent-prices.json"
 cp Resources/com.vorssaint.utils.fan-control.plist \
@@ -694,6 +766,20 @@ cp CHANGELOG.md "$STAGE/Contents/Resources/CHANGELOG.md"
 for lproj in Resources/*.lproj(N); do
     cp -R "$lproj" "$STAGE/Contents/Resources/"
 done
+if [[ -d Resources/FinderRightClick/Templates ]]; then
+    mkdir -p "$STAGE/Contents/Resources/FinderRightClick/Templates"
+    cp Resources/FinderRightClick/Templates/* "$STAGE/Contents/Resources/FinderRightClick/Templates/"
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FINDER_RIGHT_CLICK_ID" \
+    "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $FINDER_RIGHT_CLICK_EXECUTABLE" \
+    "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :VSFinderRightClickHostURLScheme $FINDER_RIGHT_CLICK_HOST_SCHEME" \
+    "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :VSFinderRightClickConfigurationHomeRelativePath $FINDER_RIGHT_CLICK_CONFIG_PATH" \
+    "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 $FINDER_RIGHT_CLICK_HOST_SCHEME" \
+    "$STAGE/Contents/Info.plist"
 if (( DEV )); then
     # A distinct identity so the Developer build installs and runs next to the
     # official app, with its own permissions, preferences and login item.
@@ -701,6 +787,8 @@ if (( DEV )); then
     /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$STAGE/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$STAGE/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $EXECUTABLE" "$STAGE/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Vorssaint Finder Right Click (Developer)" \
+        "$FINDER_RIGHT_CLICK_STAGE/Contents/Info.plist"
     FAN_PLIST="$STAGE/Contents/Library/LaunchDaemons/$FAN_HELPER_ID.plist"
     /usr/libexec/PlistBuddy -c "Set :Label $FAN_HELPER_ID" "$FAN_PLIST"
     /usr/libexec/PlistBuddy -c "Set :BundleProgram Contents/Library/LaunchServices/$FAN_HELPER_ID" "$FAN_PLIST"
@@ -750,11 +838,13 @@ xattr -c -r "$STAGE" 2>/dev/null || true
 #      notarization), the app's entitlements and a secure timestamp. Gives a
 #      stable, team-based designated requirement, so permissions persist across
 #      updates AND Gatekeeper shows no "unverified developer" warning.
-#   2. "Vorssaint Utils Signing" — the legacy stable self-signed identity, kept
-#      as a fallback so contributors without a Developer ID still get a constant
-#      designated requirement across their local builds.
-#   3. Ad-hoc — fresh clone with no identity at all.
-DEVID="$(developer_id_identity)"
+#   2. Apple Development — free team-bearing identity for local builds; needed
+#      so Finder Sync and similar PlugIns appear under File Providers.
+#   3. "Vorssaint Utils Signing" — the legacy stable self-signed identity, kept
+#      as a fallback so contributors without an Apple certificate still get a
+#      constant designated requirement across their local builds.
+#   4. Ad-hoc — fresh clone with no identity at all.
+DEVID="$(preferred_codesign_identity)"
 codesign_app() {
     local target="$1"
     if [[ -n "$DEVID" ]]; then
@@ -793,14 +883,34 @@ codesign_now_playing_adapter() {
     fi
 }
 
+codesign_finder_right_click_appex() {
+    local target="$1"
+    if [[ -n "$DEVID" ]]; then
+        codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
+            --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign "$DEVID" "$target"
+    elif legacy_identity_installed; then
+        codesign --force --strip-disallowed-xattrs --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign "$LEGACY_IDENTITY" "$target"
+    else
+        codesign --force --strip-disallowed-xattrs --identifier "$FINDER_RIGHT_CLICK_ID" \
+            --entitlements "$FINDER_RIGHT_CLICK_ENTITLEMENTS" --sign - "$target"
+    fi
+}
+
 sign_bundle() {
     local bundle="$1"
     local executable="$bundle/Contents/MacOS/$EXECUTABLE"
     local helper="$bundle/Contents/Library/LaunchServices/$FAN_HELPER_ID"
     local adapter="$bundle/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
+    local appex="$bundle/Contents/PlugIns/$FINDER_RIGHT_CLICK_APPEX"
 
     if [[ -n "$DEVID" ]]; then
-        echo "  signing with Developer ID (hardened runtime): $DEVID"
+        if [[ "$DEVID" == Developer\ ID\ Application:* ]]; then
+            echo "  signing with Developer ID (hardened runtime): $DEVID"
+        else
+            echo "  signing with Apple Development (hardened runtime): $DEVID"
+        fi
     elif legacy_identity_installed; then
         echo "  signing with legacy self-signed identity: $LEGACY_IDENTITY"
     else
@@ -808,6 +918,7 @@ sign_bundle() {
     fi
     [[ -f "$helper" ]] && codesign_fan_helper "$helper"
     [[ -f "$adapter" ]] && codesign_now_playing_adapter "$adapter"
+    [[ -d "$appex" ]] && codesign_finder_right_click_appex "$appex"
     codesign_app "$bundle"
 
     # If local filesystem metadata invalidates the first signature, sign once
@@ -817,11 +928,13 @@ sign_bundle() {
         xattr -c -r "$bundle" 2>/dev/null || true
         [[ -f "$helper" ]] && codesign_fan_helper "$helper"
         [[ -f "$adapter" ]] && codesign_now_playing_adapter "$adapter"
+        [[ -d "$appex" ]] && codesign_finder_right_click_appex "$appex"
         codesign_app "$bundle"
     fi
     [[ -f "$executable" ]] && codesign --verify --strict "$executable"
     [[ -f "$helper" ]] && codesign --verify --strict "$helper"
     [[ -f "$adapter" ]] && codesign --verify --strict "$adapter"
+    [[ -d "$appex" ]] && codesign --verify --strict "$appex"
     codesign --verify --deep --strict "$bundle"
 }
 

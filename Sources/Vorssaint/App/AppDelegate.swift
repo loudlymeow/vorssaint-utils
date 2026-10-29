@@ -364,6 +364,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         KeepAwakeManager.shared.deactivate(reason: .quit)
     }
 
+    /// Finder Sync asks the host to create files through a custom URL scheme.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        FinderRightClickURLRouter.shared.handle(urls)
+    }
+
     /// The lifeline when the menu bar icon goes missing. Opening the app again
     /// from Finder, Spotlight or Launchpad while it's already running lands here:
     /// force the icon back and pop the panel so there's immediate proof the app is
