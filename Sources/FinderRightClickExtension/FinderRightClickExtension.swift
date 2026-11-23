@@ -53,7 +53,11 @@ final class FinderRightClickExtension: FIFinderSync {
 
     override init() {
         super.init()
-        FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/", isDirectory: true)]
+        // `/` alone does not cover volumes mounted under `/Volumes` (external disks).
+        FIFinderSyncController.default().directoryURLs = [
+            URL(fileURLWithPath: "/", isDirectory: true),
+            URL(fileURLWithPath: "/Volumes", isDirectory: true),
+        ]
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
