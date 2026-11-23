@@ -1934,8 +1934,11 @@ enum RepositoryFeatureTests {
         // on the app people actually use. CI never passes --install.
         let buildScriptCode = buildScript.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("#") }
+        // Fork prefers Apple Development when Developer ID is absent, so the
+        // install guard checks preferred_codesign_identity rather than only
+        // developer_id_identity.
         suite.expect(buildScriptCode.contains { $0.contains("(( DEV || INSTALL ))")
-                                            && $0.contains("developer_id_identity") },
+                                            && $0.contains("preferred_codesign_identity") },
                "the signing setup guard covers every install, not only the Developer variant")
         // The setup script must run against the stock /usr/bin/openssl, which
         // is LibreSSL: it rejects OpenSSL 3's -legacy flag outright, and the
