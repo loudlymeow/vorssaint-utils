@@ -16,6 +16,10 @@ dist/
 # Local-only working notes
 AGENTS.md
 CLAUDE.md
+PROJECT_MAP.md
+
+# CodeGraph local index
+.codegraph/
 
 # macOS noise
 .DS_Store
